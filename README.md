@@ -19,11 +19,20 @@ pnpm dev
 
 ## Character data
 
-The app reads the active character from the Google Sheet through a local Node API.
-The server uses the service-account credentials configured by
+The app reads the active character from the Google Sheet through a server-side
+API. Locally, the server uses the service-account credentials configured by
 `GOOGLE_APPLICATION_CREDENTIALS`; the credential file must remain outside `src`
 and must never be exposed to the browser. `.env.local` holds local configuration
 and is ignored by Git.
+
+For Vercel deployments, the `api/characters.mjs` serverless function serves
+`/api/characters`. Configure `GOOGLE_SHEETS_SPREADSHEET_ID` and
+`GOOGLE_SERVICE_ACCOUNT_JSON` as Vercel environment variables for the relevant
+deployment environments. Set `GOOGLE_SERVICE_ACCOUNT_JSON` to the complete
+service-account JSON contents; do not commit this value or put it in a
+`VITE_`-prefixed variable. Share the spreadsheet with the service account's
+`client_email` and grant it Viewer access for character loading. Redeploy after
+changing environment variables.
 
 The spreadsheet must have these tabs and header rows:
 
@@ -50,9 +59,9 @@ the live spreadsheet immediately. The service account needs **Editor** access
 to the spreadsheet, and the local API now uses the Google Sheets read/write
 scope. Restart the dev server after changing credentials or permissions.
 
-The editor is intentionally not linked in the app navigation, and the API
-listens on localhost. Do not expose the local API or its service-account
-credentials to the public internet.
+The editor is intentionally not linked in the app navigation and is local-only;
+the deployed Vercel function only serves the character-loading endpoint. Do not
+expose local write endpoints or service-account credentials to the public internet.
 
 Run `pnpm dev` to start both the Vite app and the local Sheets API. The app loads
 characters on startup and provides a selector when the spreadsheet has multiple

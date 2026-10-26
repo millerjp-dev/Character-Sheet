@@ -4,6 +4,7 @@ import { GoogleAuth } from 'google-auth-library';
 const port = Number(process.env.API_PORT ?? 3001);
 const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 const requiredHeaders = {
   Characters: ['id', 'name', 'primaryColor', 'secondaryColor'],
   Stats: ['characterId', 'name', 'score', 'modifier'],
@@ -22,8 +23,10 @@ function requireConfiguration() {
     throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID is not configured.');
   }
 
-  if (!keyFile) {
-    throw new Error('GOOGLE_APPLICATION_CREDENTIALS is not configured.');
+  if (!keyFile && !serviceAccountJson) {
+    throw new Error(
+      'Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_JSON.',
+    );
   }
 }
 
@@ -189,8 +192,16 @@ function columnLetter(index) {
 
 async function getGoogleAccessToken() {
   requireConfiguration();
+  let credentials;
+  if (serviceAccountJson) {
+    try {
+      credentials = JSON.parse(serviceAccountJson);
+    } catch {
+      throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON.');
+    }
+  }
   const auth = new GoogleAuth({
-    keyFile,
+    ...(credentials ? { credentials } : { keyFile }),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   const client = await auth.getClient();
@@ -485,7 +496,7 @@ async function fetchCharacters() {
   return mapCharacters(ranges);
 }
 
-const server = createServer(async (request, response) => {
+export async function handleApiRequest(request, response) {
   const url = new URL(request.url ?? '/', 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/api/characters') {
     try {
@@ -538,8 +549,11 @@ const server = createServer(async (request, response) => {
     console.error(`Failed to edit ${tabName} in Google Sheets: ${message}`);
     sendJson(response, 400, { error: message });
   }
-});
+}
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`Character API listening on http://127.0.0.1:${port}`);
-});
+if (process.env.VERCEL !== '1') {
+  const server = createServer(handleApiRequest);
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`Character API listening on http://127.0.0.1:${port}`);
+  });
+}
