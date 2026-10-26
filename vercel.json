@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/cards",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/debug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/sheet-editor",
+      "destination": "/index.html"
+    }
+  ]
+}

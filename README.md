@@ -33,6 +33,9 @@ service-account JSON contents; do not commit this value or put it in a
 `VITE_`-prefixed variable. Share the spreadsheet with the service account's
 `client_email` and grant it Viewer access for character loading. Redeploy after
 changing environment variables.
+`vercel.json` also rewrites the app's client-side routes (`/cards`, `/debug`,
+and `/sheet-editor`) to the Vite entry page so direct navigation and refreshes
+work on Vercel without intercepting `/api/characters`.
 
 The spreadsheet must have these tabs and header rows:
 
