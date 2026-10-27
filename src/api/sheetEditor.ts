@@ -13,9 +13,19 @@ export interface EditableSheet {
   rows: SheetRow[];
 }
 
+export const SHEET_EDITOR_PASSWORD_KEY = 'sheet-editor-password';
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const headers = new Headers(init?.headers);
+  const password = window.sessionStorage.getItem(SHEET_EDITOR_PASSWORD_KEY);
+  if (password) {
+    headers.set('Authorization', `Bearer ${password}`);
+  }
+  const response = await fetch(url, { ...init, headers });
   const payload: unknown = await response.json().catch(() => null);
+  if (response.status === 401) {
+    window.sessionStorage.removeItem(SHEET_EDITOR_PASSWORD_KEY);
+  }
   if (!response.ok) {
     const message =
       typeof payload === 'object' &&

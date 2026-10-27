@@ -53,18 +53,22 @@ Set `backgroundTheme` to `deep-space`, `arcane-forest`, `warm-parchment`, or
 values default to `warm-parchment`.
 
 The spreadsheet editor is available directly at `/sheet-editor` while running
-locally with `pnpm dev`. It can edit a selected cell by choosing an existing
+with `pnpm dev` or on Vercel. It can edit a selected cell by choosing an existing
 column header, add rows, and delete rows in the `Characters`, `Stats`, and
 `Skills` tabs. ID and `characterId` cells are locked to protect relationships;
 a character cannot be deleted while it still has stats or skills. Cell values
 are written as literal text, not interpreted as formulas. These edits change
 the live spreadsheet immediately. The service account needs **Editor** access
-to the spreadsheet, and the local API now uses the Google Sheets read/write
-scope. Restart the dev server after changing credentials or permissions.
+to the spreadsheet, and the API uses the Google Sheets read/write scope.
 
-The editor is intentionally not linked in the app navigation and is local-only;
-the deployed Vercel function only serves the character-loading endpoint. Do not
-expose local write endpoints or service-account credentials to the public internet.
+On Vercel, configure `SHEET_EDITOR_PASSWORD` as a server-side environment
+variable to enable the editor API. The page prompts for this password and keeps
+it in session storage for the current browser tab. Use a long, unique password;
+never use a `VITE_`-prefixed variable. If this variable is missing, hosted sheet
+editing is disabled. Local development continues to use the localhost API
+without a password prompt. The editor is intentionally not linked in the app
+navigation. Do not expose local write endpoints or service-account credentials
+to the public internet.
 
 Run `pnpm dev` to start both the Vite app and the local Sheets API. The app loads
 characters on startup and provides a selector when the spreadsheet has multiple

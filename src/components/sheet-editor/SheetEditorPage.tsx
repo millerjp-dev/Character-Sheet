@@ -4,6 +4,7 @@ import {
   addSheetRow,
   deleteSheetRow,
   fetchEditableSheet,
+  SHEET_EDITOR_PASSWORD_KEY,
   SHEET_TABS,
   updateSheetCell,
 } from '../../api/sheetEditor';
@@ -30,7 +31,20 @@ const inputStyle = {
 };
 
 function blankRow(headers: string[]): Record<string, string> {
-  return Object.fromEntries(headers.map((header) => [header, '']));
+  return Object.fromEntries(headers.map((header) => [
+    header,
+    header === 'primaryColor' || header === 'secondaryColor' ? '#000000' : '',
+  ]));
+}
+
+function colorPickerValue(value: string): string {
+  if (/^#[\da-f]{6}$/i.test(value)) {
+    return value;
+  }
+  const shortHex = value.match(/^#([\da-f])([\da-f])([\da-f])$/i);
+  return shortHex
+    ? `#${shortHex[1]}${shortHex[1]}${shortHex[2]}${shortHex[2]}${shortHex[3]}${shortHex[3]}`
+    : '#000000';
 }
 
 function BackgroundThemeOptions() {
@@ -105,6 +119,9 @@ const cellStyle = {
 };
 
 export function SheetEditorPage() {
+  const passwordRequired =
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1';
   const [tab, setTab] = useState<SheetTab>('Characters');
   const [sheet, setSheet] = useState<EditableSheet | null>(null);
   const [selectedRow, setSelectedRow] = useState<SheetRow | null>(null);
@@ -116,8 +133,18 @@ export function SheetEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [editorPassword, setEditorPassword] = useState(
+    () => window.sessionStorage.getItem(SHEET_EDITOR_PASSWORD_KEY) ?? '',
+  );
+  const [passwordInput, setPasswordInput] = useState('');
 
   useEffect(() => {
+    if (passwordRequired && !editorPassword) {
+      setLoading(false);
+      setSheet(null);
+      return;
+    }
+
     let active = true;
     setLoading(true);
     setError(null);
@@ -134,7 +161,11 @@ export function SheetEditorPage() {
       })
       .catch((loadError: unknown) => {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load this sheet.');
+          const message = loadError instanceof Error ? loadError.message : 'Unable to load this sheet.';
+          if (passwordRequired && message === 'Enter the sheet editor password to continue.') {
+            setEditorPassword('');
+          }
+          setError(message);
         }
       })
       .finally(() => {
@@ -145,7 +176,7 @@ export function SheetEditorPage() {
     return () => {
       active = false;
     };
-  }, [tab, reloadVersion]);
+  }, [editorPassword, passwordRequired, tab, reloadVersion]);
 
   const editableColumns = sheet?.headers.filter(
     (header) => header !== 'id' && header !== 'characterId',
@@ -218,6 +249,15 @@ export function SheetEditorPage() {
     }
   }
 
+  function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    window.sessionStorage.setItem(SHEET_EDITOR_PASSWORD_KEY, passwordInput);
+    setEditorPassword(passwordInput);
+    setPasswordInput('');
+    setError(null);
+    setReloadVersion((version) => version + 1);
+  }
+
   return (
     <main style={{ color: '#f5e7c7', display: 'grid', gap: '20px', margin: '0 auto 48px', maxWidth: '1200px', padding: '0 24px' }}>
       <header style={{ ...panelStyle, textAlign: 'center' }}>
@@ -249,6 +289,32 @@ export function SheetEditorPage() {
       {error && <p role="alert" style={{ ...panelStyle, borderColor: '#bd5d4c', margin: 0 }}>{error}</p>}
       {status && <p role="status" style={{ ...panelStyle, margin: 0 }}>{status}</p>}
 
+      {passwordRequired && !editorPassword && (
+        <section aria-labelledby="editor-password-heading" style={panelStyle}>
+          <h2 id="editor-password-heading" style={{ fontFamily: 'Georgia, "Times New Roman", serif', marginTop: 0 }}>
+            Editor password required
+          </h2>
+          <form onSubmit={submitPassword}>
+            <label style={{ display: 'grid', gap: '6px', maxWidth: '480px' }}>
+              Password
+              <input
+                autoComplete="current-password"
+                onChange={(event) => setPasswordInput(event.target.value)}
+                required
+                style={inputStyle}
+                type="password"
+                value={passwordInput}
+              />
+            </label>
+            <button disabled={!passwordInput} style={{ marginTop: '14px' }} type="submit">
+              Unlock editor
+            </button>
+          </form>
+        </section>
+      )}
+
+      {passwordRequired && !editorPassword ? null : (
+        <>
       <section aria-labelledby="sheet-rows-heading" style={panelStyle}>
         <h2 id="sheet-rows-heading" style={{ fontFamily: 'Georgia, "Times New Roman", serif', marginTop: 0 }}>
           {tab} rows
@@ -297,6 +363,16 @@ export function SheetEditorPage() {
                 >
                   <BackgroundThemeOptions />
                 </select>
+              ) : selectedColumn === 'primaryColor' || selectedColumn === 'secondaryColor' ? (
+                <input
+                  aria-label="New value"
+                  onChange={(event) => setEditValue(event.target.value)}
+                  disabled={busy}
+                  required
+                  style={{ ...inputStyle, minHeight: '44px', padding: '4px' }}
+                  type="color"
+                  value={colorPickerValue(editValue)}
+                />
               ) : (
                 <input
                   onChange={(event) => setEditValue(event.target.value)}
@@ -335,6 +411,16 @@ export function SheetEditorPage() {
                     >
                       <BackgroundThemeOptions />
                     </select>
+                  ) : header === 'primaryColor' || header === 'secondaryColor' ? (
+                    <input
+                      aria-label={header}
+                      onChange={(event) => setNewRow((values) => ({ ...values, [header]: event.target.value }))}
+                      disabled={busy}
+                      required
+                      style={{ ...inputStyle, minHeight: '44px', padding: '4px' }}
+                      type="color"
+                      value={colorPickerValue(newRow[header] ?? '')}
+                    />
                   ) : (
                     <input
                       onChange={(event) => setNewRow((values) => ({ ...values, [header]: event.target.value }))}
@@ -355,6 +441,8 @@ export function SheetEditorPage() {
             </button>
           </form>
         </section>
+      )}
+        </>
       )}
     </main>
   );

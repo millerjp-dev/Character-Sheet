@@ -1,10 +1,12 @@
 import { createServer } from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { GoogleAuth } from 'google-auth-library';
 
 const port = Number(process.env.API_PORT ?? 3001);
 const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+const sheetEditorPassword = process.env.SHEET_EDITOR_PASSWORD;
 const requiredHeaders = {
   Characters: ['id', 'name', 'primaryColor', 'secondaryColor'],
   Stats: ['characterId', 'name', 'score', 'modifier'],
@@ -399,15 +401,43 @@ function requireLocalOrigin(request) {
   if (!origin) {
     throw new Error('Origin header is required for sheet edits.');
   }
-  let hostname;
+  let originUrl;
   try {
-    hostname = new URL(origin).hostname;
+    originUrl = new URL(origin);
   } catch {
     throw new Error('Request origin is not allowed.');
   }
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+  if (process.env.VERCEL === '1') {
+    const forwardedHost = request.headers['x-forwarded-host'];
+    const allowedHost = Array.isArray(forwardedHost)
+      ? forwardedHost[0]
+      : forwardedHost ?? request.headers.host;
+    const forwardedProto = request.headers['x-forwarded-proto'];
+    const allowedProto = Array.isArray(forwardedProto)
+      ? forwardedProto[0]
+      : forwardedProto ?? 'https';
+    if (
+      !allowedHost ||
+      originUrl.host !== allowedHost ||
+      originUrl.protocol !== `${allowedProto}:`
+    ) {
+      throw new Error('Sheet edits are only allowed from this deployment.');
+    }
+    return;
+  }
+  if (originUrl.hostname !== 'localhost' && originUrl.hostname !== '127.0.0.1') {
     throw new Error('Sheet edits are only allowed from a local browser.');
   }
+}
+
+function validEditorPassword(request) {
+  const authorization = request.headers.authorization;
+  const token = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : '';
+  const tokenHash = createHash('sha256').update(token).digest();
+  const expectedHash = createHash('sha256').update(sheetEditorPassword ?? '').digest();
+  return Boolean(sheetEditorPassword) && timingSafeEqual(tokenHash, expectedHash);
 }
 
 function mapCharacters(valueRanges) {
@@ -518,6 +548,17 @@ export async function handleApiRequest(request, response) {
   if (!sheetTabs.includes(tabName)) {
     sendJson(response, 404, { error: 'Not found.' });
     return;
+  }
+
+  if (process.env.VERCEL === '1') {
+    if (!sheetEditorPassword) {
+      sendJson(response, 503, { error: 'Sheet editor is not configured for this deployment.' });
+      return;
+    }
+    if (!validEditorPassword(request)) {
+      sendJson(response, 401, { error: 'Enter the sheet editor password to continue.' });
+      return;
+    }
   }
 
   try {
