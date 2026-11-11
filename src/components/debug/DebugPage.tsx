@@ -29,6 +29,7 @@ const initialCharacter: Character = {
   palette: { primary: '#ffd700', secondary: '#02abd0' },
   stats: [{ name: 'Strength', score: 16, modifier: 3 }],
   skills: [{ name: 'Animal Handling', bonus: 4 }],
+  stories: [],
 };
 
 const initialArt: AltArtItem = {

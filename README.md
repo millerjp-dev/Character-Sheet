@@ -34,14 +34,15 @@ service-account JSON contents; do not commit this value or put it in a
 `client_email` and grant it Viewer access for character loading. Redeploy after
 changing environment variables.
 `vercel.json` also rewrites the app's client-side routes (`/cards`, `/debug`,
-and `/sheet-editor`) to the Vite entry page so direct navigation and refreshes
-work on Vercel without intercepting `/api/characters`.
+`/sheet-editor`, `/create-story`, and `/create-character`) to the Vite entry page so direct navigation
+and refreshes work on Vercel without intercepting `/api/characters`.
 
 The spreadsheet must have these tabs and header rows:
 
 - `Characters`: `id`, `name`, `primaryColor`, `secondaryColor`, and optional `imageUrl` and `backgroundTheme`
 - `Stats`: `characterId`, `name`, `score`, `modifier`
 - `Skills`: `characterId`, `name`, `bonus`
+- `Stories`: `id`, `characterId`, `title`, `connectedStories`, `body`
 
 Use `#RGB` or `#RRGGBB` for palette colors. Leave `modifier` blank to hide the
 modifier badge; use `0` to show `+0`. Every stat and skill row must reference an
@@ -51,12 +52,16 @@ image is loaded from that URL rather than stored with the website.
 Set `backgroundTheme` to `deep-space`, `arcane-forest`, `warm-parchment`, or
 `rune-twilight` to choose the whole-app background for that character. Blank
 values default to `warm-parchment`.
+Each Stories row belongs to a character. Story IDs must be unique and cannot
+contain commas; use comma-separated story IDs in `connectedStories` to link related stories.
+Story bodies support Markdown formatting, with raw HTML disabled.
 
 The spreadsheet editor is available directly at `/sheet-editor` while running
 with `pnpm dev` or on Vercel. It can edit a selected cell by choosing an existing
-column header, add rows, and delete rows in the `Characters`, `Stats`, and
-`Skills` tabs. ID and `characterId` cells are locked to protect relationships;
-a character cannot be deleted while it still has stats or skills. Cell values
+column header, add rows, and delete rows in the `Characters`, `Stats`, `Skills`,
+and `Stories` tabs. ID and `characterId` cells are locked to protect
+relationships; a character cannot be deleted while it still has related rows,
+and a story cannot be deleted while other stories link to it. Cell values
 are written as literal text, not interpreted as formulas. These edits change
 the live spreadsheet immediately. The service account needs **Editor** access
 to the spreadsheet, and the API uses the Google Sheets read/write scope.
@@ -69,6 +74,21 @@ editing is disabled. Local development continues to use the localhost API
 without a password prompt. The editor is intentionally not linked in the app
 navigation. Do not expose local write endpoints or service-account credentials
 to the public internet.
+
+The `Create Story` tab lets you compose a formatted story in a rich-text editor;
+it is saved as Markdown on the character's bookshelf. The editor bundle is
+loaded only when opening the story creation page. Footnotes can be added from
+the editor toolbar and display as focusable superscript markers in the reader.
+You can optionally link existing stories using the title-search picker, which
+loads story titles only when opened; the story creation page does not load story
+bodies until then. On Vercel, publishing requires the same
+`SHEET_EDITOR_PASSWORD` used by the spreadsheet editor. New story IDs are
+generated automatically.
+
+The `Create Character` tab adds a character with a generated ID, name, optional
+portrait URL, and colors. New characters use the default `warm-parchment` theme;
+stats, skills, and stories can be added afterward. On Vercel, creation requires
+the same `SHEET_EDITOR_PASSWORD` used by the spreadsheet editor.
 
 Run `pnpm dev` to start both the Vite app and the local Sheets API. The app loads
 characters on startup and provides a selector when the spreadsheet has multiple

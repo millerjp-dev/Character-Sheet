@@ -11,6 +11,7 @@ const requiredHeaders = {
   Characters: ['id', 'name', 'primaryColor', 'secondaryColor'],
   Stats: ['characterId', 'name', 'score', 'modifier'],
   Skills: ['characterId', 'name', 'bonus'],
+  Stories: ['id', 'characterId', 'title', 'connectedStories', 'body'],
 };
 const sheetTabs = Object.keys(requiredHeaders);
 const backgroundThemes = new Set([
@@ -140,8 +141,30 @@ function validateCellValue(tabName, column, value) {
     if (column === 'bonus') {
       requireNumber(text, column, tabName);
     }
+  } else if (tabName === 'Stories') {
+    if (['id', 'characterId', 'title'].includes(column) && !text.trim()) {
+      throw new Error(`${column} cannot be blank.`);
+    }
+    if (column === 'id' && (text !== text.trim() || text.includes(','))) {
+      throw new Error('Story IDs cannot have surrounding whitespace or commas.');
+    }
   }
   return text;
+}
+
+function validateStoryConnections(storyId, connectionText, stories) {
+  const connectedIds = connectionText
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  for (const connectedId of connectedIds) {
+    if (connectedId === storyId) {
+      throw new Error('A story cannot be connected to itself.');
+    }
+    if (!stories.some(({ values }) => values.id === connectedId)) {
+      throw new Error(`Stories references unknown story "${connectedId}".`);
+    }
+  }
 }
 
 function readEditableSheet(valueRange, tabName) {
@@ -249,14 +272,20 @@ function requireRecord(value, label) {
 function validateNewRow(tabName, headers, input) {
   const values = requireRecord(input, 'Row values');
   const unknownColumns = Object.keys(values).filter((column) => !headers.includes(column));
-  if (unknownColumns.length > 0) {
-    throw new Error(`Unknown column${unknownColumns.length > 1 ? 's' : ''}: ${unknownColumns.join(', ')}.`);
+  const unsupportedColumns = unknownColumns.filter(
+    (column) =>
+      tabName !== 'Characters' ||
+      !['imageUrl', 'backgroundTheme'].includes(column) ||
+      String(values[column] ?? '').trim() !== '',
+  );
+  if (unsupportedColumns.length > 0) {
+    throw new Error(`Unknown column${unsupportedColumns.length > 1 ? 's' : ''}: ${unsupportedColumns.join(', ')}.`);
   }
   const row = Object.fromEntries(
     headers.map((header) => [header, validateCellValue(tabName, header, values[header] ?? '')]),
   );
   for (const header of requiredHeaders[tabName]) {
-    if (header !== 'modifier' && !row[header].trim()) {
+    if (!['modifier', 'connectedStories', 'body'].includes(header) && !row[header].trim()) {
       throw new Error(`${header} cannot be blank.`);
     }
   }
@@ -268,6 +297,12 @@ async function appendSheetRow(tabName, input) {
   const row = validateNewRow(tabName, sheet.headers, input);
   if (tabName === 'Characters' && sheet.rows.some(({ values }) => values.id === row.id)) {
     throw new Error(`A character with id "${row.id}" already exists.`);
+  }
+  if (tabName === 'Stories') {
+    if (sheet.rows.some(({ values }) => values.id === row.id)) {
+      throw new Error(`A story with id "${row.id}" already exists.`);
+    }
+    validateStoryConnections(row.id, row.connectedStories, sheet.rows);
   }
   if (tabName !== 'Characters') {
     const characters = await getEditableSheet('Characters');
@@ -316,6 +351,9 @@ async function updateSheetCell(tabName, rowNumber, input) {
     throw new Error('Choose an existing column header.');
   }
   const value = validateCellValue(tabName, column, body.value);
+  if (tabName === 'Stories' && column === 'connectedStories') {
+    validateStoryConnections(record.values.id, value, sheet.rows);
+  }
   const range = encodeURIComponent(`${tabName}!${columnLetter(columnIndex)}${rowNumber}`);
   await sheetsRequest(`/values/${range}?valueInputOption=RAW`, {
     method: 'PUT',
@@ -338,11 +376,19 @@ async function deleteSheetRow(tabName, rowNumber, input) {
   }
   if (tabName === 'Characters') {
     const characterId = record.values.id;
-    for (const relatedTab of ['Stats', 'Skills']) {
+    for (const relatedTab of ['Stats', 'Skills', 'Stories']) {
       const relatedSheet = await getEditableSheet(relatedTab);
       if (relatedSheet.rows.some(({ values }) => values.characterId === characterId)) {
         throw new Error(`Cannot delete this character while it has ${relatedTab.toLowerCase()} rows.`);
       }
+    }
+  } else if (tabName === 'Stories') {
+    const storyId = record.values.id;
+    if (sheet.rows.some(({ values }) =>
+      values.id !== storyId &&
+      String(values.connectedStories ?? '').split(',').map((id) => id.trim()).includes(storyId),
+    )) {
+      throw new Error('Cannot delete this story while other stories are connected to it.');
     }
   }
 
@@ -441,11 +487,13 @@ function validEditorPassword(request) {
 }
 
 function mapCharacters(valueRanges) {
-  const [characterRange, statRange, skillRange] = valueRanges;
+  const [characterRange, statRange, skillRange, storyRange] = valueRanges;
   const characters = readTable(characterRange, 'Characters');
   const stats = readTable(statRange, 'Stats');
   const skills = readTable(skillRange, 'Skills');
+  const stories = storyRange ? readTable(storyRange, 'Stories') : [];
   const byId = new Map();
+  const storiesById = new Map();
 
   for (const row of characters) {
     const id = requireText(row.id, 'id', 'Characters');
@@ -463,6 +511,7 @@ function mapCharacters(valueRanges) {
       },
       stats: [],
       skills: [],
+      stories: [],
     });
   }
 
@@ -494,13 +543,47 @@ function mapCharacters(valueRanges) {
     });
   }
 
+  for (const row of stories) {
+    const id = requireText(row.id, 'id', 'Stories');
+    if (storiesById.has(id)) {
+      throw new Error(`Stories contains duplicate id "${id}".`);
+    }
+    const characterId = requireText(row.characterId, 'characterId', 'Stories');
+    const character = byId.get(characterId);
+    if (!character) {
+      throw new Error(`Stories references unknown character "${characterId}".`);
+    }
+    const story = {
+      id,
+      title: requireText(row.title, 'title', 'Stories'),
+      body: String(row.body ?? ''),
+      connectedStories: String(row.connectedStories ?? '')
+        .split(',')
+        .map((connectedId) => connectedId.trim())
+        .filter(Boolean),
+    };
+    storiesById.set(id, story);
+    character.stories.push(story);
+  }
+
+  for (const story of storiesById.values()) {
+    for (const connectedId of story.connectedStories) {
+      if (connectedId === story.id || !storiesById.has(connectedId)) {
+        throw new Error(`Stories contains an invalid connection from "${story.id}" to "${connectedId}".`);
+      }
+    }
+  }
+
   return [...byId.values()];
 }
 
-async function fetchCharacters() {
+async function fetchCharacters(includeStories = true) {
   const accessToken = { token: await getGoogleAccessToken() };
   const parameters = new URLSearchParams();
-  for (const tabName of Object.keys(requiredHeaders)) {
+  const tabNames = Object.keys(requiredHeaders).filter(
+    (tabName) => includeStories || tabName !== 'Stories',
+  );
+  for (const tabName of tabNames) {
     parameters.append('ranges', `${tabName}!A:Z`);
   }
   parameters.set('majorDimension', 'ROWS');
@@ -519,18 +602,100 @@ async function fetchCharacters() {
 
   const data = await response.json();
   const ranges = data.valueRanges ?? [];
-  if (ranges.length !== Object.keys(requiredHeaders).length) {
+  if (ranges.length !== tabNames.length) {
     throw new Error('Google Sheets API did not return all configured tabs.');
   }
 
   return mapCharacters(ranges);
 }
 
+async function fetchStoryChoices() {
+  const accessToken = { token: await getGoogleAccessToken() };
+  const parameters = new URLSearchParams();
+  parameters.append('ranges', 'Stories!A:C');
+  parameters.append('ranges', 'Characters!A:B');
+  parameters.set('majorDimension', 'ROWS');
+
+  const url = new URL(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values:batchGet`,
+  );
+  url.search = parameters.toString();
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken.token}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Google Sheets API returned HTTP ${response.status}.`);
+  }
+
+  const data = await response.json();
+  const [storyRange, characterRange] = data.valueRanges ?? [];
+  if (!storyRange || !characterRange) {
+    throw new Error('Google Sheets API did not return story and character data.');
+  }
+
+  const [storyHeaders = [], ...storyRows] = storyRange.values ?? [];
+  const [characterHeaders = [], ...characterRows] = characterRange.values ?? [];
+  const storyColumn = Object.fromEntries(
+    storyHeaders.map((header, index) => [String(header).trim(), index]),
+  );
+  const characterColumn = Object.fromEntries(
+    characterHeaders.map((header, index) => [String(header).trim(), index]),
+  );
+  for (const header of ['id', 'characterId', 'title']) {
+    if (!Number.isInteger(storyColumn[header])) {
+      throw new Error(`Stories is missing required column "${header}".`);
+    }
+  }
+  for (const header of ['id', 'name']) {
+    if (!Number.isInteger(characterColumn[header])) {
+      throw new Error(`Characters is missing required column "${header}".`);
+    }
+  }
+
+  const charactersById = new Map(
+    characterRows
+      .filter((row) => row.some((cell) => String(cell ?? '').trim() !== ''))
+      .map((row) => [
+        String(row[characterColumn.id] ?? '').trim(),
+        String(row[characterColumn.name] ?? '').trim(),
+      ]),
+  );
+
+  return storyRows
+    .filter((row) => row.some((cell) => String(cell ?? '').trim() !== ''))
+    .map((row) => {
+      const id = requireText(row[storyColumn.id], 'id', 'Stories');
+      const characterId = requireText(row[storyColumn.characterId], 'characterId', 'Stories');
+      const title = requireText(row[storyColumn.title], 'title', 'Stories');
+      const characterName = charactersById.get(characterId);
+      if (!characterName) {
+        throw new Error(`Stories references unknown character "${characterId}".`);
+      }
+      return { id, title, characterName };
+    });
+}
+
 export async function handleApiRequest(request, response) {
   const url = new URL(request.url ?? '/', 'http://localhost');
+  if (request.method === 'GET' && url.pathname === '/api/stories') {
+    try {
+      sendJson(response, 200, await fetchStoryChoices());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error.';
+      console.error(`Failed to load story choices from Google Sheets: ${message}`);
+      sendJson(response, 500, { error: 'Unable to load stories from the spreadsheet.' });
+    }
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/characters') {
     try {
-      sendJson(response, 200, await fetchCharacters());
+      sendJson(
+        response,
+        200,
+        await fetchCharacters(url.searchParams.get('includeStories') !== 'false'),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error.';
       console.error(`Failed to load characters from Google Sheets: ${message}`);
@@ -539,7 +704,7 @@ export async function handleApiRequest(request, response) {
     return;
   }
 
-  const match = url.pathname.match(/^\/api\/sheets\/(Characters|Stats|Skills)(?:\/rows(?:\/(\d+))?)?$/);
+  const match = url.pathname.match(/^\/api\/sheets\/(Characters|Stats|Skills|Stories)(?:\/rows(?:\/(\d+))?)?$/);
   if (!match) {
     sendJson(response, 404, { error: 'Not found.' });
     return;

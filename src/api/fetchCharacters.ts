@@ -44,12 +44,29 @@ function isCharacter(value: unknown): value is Character {
         isRecord(skill) &&
         typeof skill.name === 'string' &&
         typeof skill.bonus === 'number',
+    ) &&
+    Array.isArray(value.stories) &&
+    value.stories.every(
+      (story) =>
+        isRecord(story) &&
+        typeof story.id === 'string' &&
+        typeof story.title === 'string' &&
+        typeof story.body === 'string' &&
+        Array.isArray(story.connectedStories) &&
+        story.connectedStories.every((id) => typeof id === 'string'),
     )
   );
 }
 
-export async function fetchCharacters(signal?: AbortSignal): Promise<Character[]> {
-  const response = await fetch('/api/characters', { signal });
+export async function fetchCharacters(
+  signal?: AbortSignal,
+  options: { includeStories?: boolean } = {},
+): Promise<Character[]> {
+  const url = new URL('/api/characters', window.location.origin);
+  if (options.includeStories === false) {
+    url.searchParams.set('includeStories', 'false');
+  }
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null);
     const message =

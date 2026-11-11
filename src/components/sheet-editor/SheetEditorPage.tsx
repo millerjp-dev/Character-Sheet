@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   addSheetRow,
   deleteSheetRow,
@@ -61,12 +62,14 @@ function BackgroundThemeOptions() {
 function SheetEditorPanel({
   onDelete,
   onEdit,
+  onPreviewBody,
   sheet,
   disabled,
   selectedRowNumber,
 }: {
   onDelete: (row: SheetRow) => void;
   onEdit: (row: SheetRow) => void;
+  onPreviewBody: (title: string, body: string) => void;
   sheet: EditableSheet;
   disabled: boolean;
   selectedRowNumber: number | null;
@@ -86,7 +89,29 @@ function SheetEditorPanel({
             <tr key={row.rowNumber}>
               <td style={cellStyle}>{row.rowNumber}</td>
               {sheet.headers.map((header) => (
-                <td key={header} style={cellStyle}>{row.values[header]}</td>
+                <td key={header} style={cellStyle}>
+                  {sheet.tab === 'Stories' && header === 'body' && row.values[header].trim() ? (
+                    <button
+                      onClick={() => onPreviewBody(row.values.title, row.values[header])}
+                      style={{
+                        background: 'transparent',
+                        border: 0,
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        maxWidth: '360px',
+                        overflow: 'hidden',
+                        padding: 0,
+                        textAlign: 'left',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      type="button"
+                    >
+                      {previewWords(row.values[header])}
+                    </button>
+                  ) : row.values[header]}
+                </td>
               ))}
               <td style={cellStyle}>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -112,6 +137,11 @@ function SheetEditorPanel({
   );
 }
 
+function previewWords(text: string): string {
+  const words = text.trim().split(/\s+/);
+  return words.length > 20 ? `${words.slice(0, 20).join(' ')}…` : text;
+}
+
 const cellStyle = {
   borderBottom: '1px solid rgba(245, 231, 199, 0.16)',
   color: '#f5e7c7',
@@ -124,6 +154,8 @@ export function SheetEditorPage() {
     window.location.hostname !== '127.0.0.1';
   const [tab, setTab] = useState<SheetTab>('Characters');
   const [sheet, setSheet] = useState<EditableSheet | null>(null);
+  const [bodyPreview, setBodyPreview] = useState<{ title: string; body: string } | null>(null);
+  const bodyDialogRef = useRef<HTMLDialogElement>(null);
   const [selectedRow, setSelectedRow] = useState<SheetRow | null>(null);
   const [selectedColumn, setSelectedColumn] = useState('');
   const [editValue, setEditValue] = useState('');
@@ -137,6 +169,12 @@ export function SheetEditorPage() {
     () => window.sessionStorage.getItem(SHEET_EDITOR_PASSWORD_KEY) ?? '',
   );
   const [passwordInput, setPasswordInput] = useState('');
+
+  useEffect(() => {
+    if (bodyPreview) {
+      bodyDialogRef.current?.showModal();
+    }
+  }, [bodyPreview]);
 
   useEffect(() => {
     if (passwordRequired && !editorPassword) {
@@ -228,7 +266,7 @@ export function SheetEditorPage() {
   }
 
   async function removeRow(row: SheetRow) {
-    const displayName = row.values.name || `row ${row.rowNumber}`;
+    const displayName = row.values.name || row.values.title || `row ${row.rowNumber}`;
     if (!window.confirm(`Permanently delete ${displayName} from ${tab}?`)) {
       return;
     }
@@ -324,12 +362,34 @@ export function SheetEditorPage() {
           <SheetEditorPanel
             onDelete={(row) => void removeRow(row)}
             onEdit={chooseRow}
+            onPreviewBody={(title, body) => setBodyPreview({ title, body })}
             disabled={busy}
             selectedRowNumber={selectedRow?.rowNumber ?? null}
             sheet={sheet}
           />
         )}
       </section>
+
+      {bodyPreview && (
+        <dialog
+          aria-labelledby="story-body-dialog-title"
+          className="story-body-dialog"
+          onClose={() => setBodyPreview(null)}
+          ref={bodyDialogRef}
+        >
+          <header style={{ alignItems: 'start', display: 'flex', gap: '16px', justifyContent: 'space-between' }}>
+            <h2 id="story-body-dialog-title" style={{ fontFamily: 'Georgia, "Times New Roman", serif', marginTop: 0 }}>
+              {bodyPreview.title || 'Story body'}
+            </h2>
+            <button autoFocus onClick={() => bodyDialogRef.current?.close()} type="button">
+              Close
+            </button>
+          </header>
+          <div style={{ lineHeight: 1.7, overflowWrap: 'anywhere' }}>
+            <ReactMarkdown components={{ img: () => null }}>{bodyPreview.body}</ReactMarkdown>
+          </div>
+        </dialog>
+      )}
 
       {selectedRow && sheet && (
         <section aria-labelledby="edit-cell-heading" style={panelStyle}>
@@ -372,6 +432,15 @@ export function SheetEditorPage() {
                   style={{ ...inputStyle, minHeight: '44px', padding: '4px' }}
                   type="color"
                   value={colorPickerValue(editValue)}
+                />
+              ) : selectedColumn === 'body' ? (
+                <textarea
+                  aria-label="New value"
+                  onChange={(event) => setEditValue(event.target.value)}
+                  disabled={busy}
+                  rows={10}
+                  style={inputStyle}
+                  value={editValue}
                 />
               ) : (
                 <input
@@ -421,11 +490,20 @@ export function SheetEditorPage() {
                       type="color"
                       value={colorPickerValue(newRow[header] ?? '')}
                     />
+                  ) : header === 'body' ? (
+                    <textarea
+                      aria-label={header}
+                      onChange={(event) => setNewRow((values) => ({ ...values, [header]: event.target.value }))}
+                      disabled={busy}
+                      rows={6}
+                      style={inputStyle}
+                      value={newRow[header] ?? ''}
+                    />
                   ) : (
                     <input
                       onChange={(event) => setNewRow((values) => ({ ...values, [header]: event.target.value }))}
                       disabled={busy}
-                      required={['id', 'name', 'primaryColor', 'secondaryColor', 'characterId', 'score', 'bonus'].includes(header)}
+                      required={['id', 'name', 'primaryColor', 'secondaryColor', 'characterId', 'score', 'bonus', 'title'].includes(header)}
                       style={inputStyle}
                       value={newRow[header] ?? ''}
                     />
@@ -434,7 +512,10 @@ export function SheetEditorPage() {
               ))}
             </div>
             {tab !== 'Characters' && (
-              <p style={{ color: '#d8cbb1' }}>The character ID must match an existing row in Characters.</p>
+              <p style={{ color: '#d8cbb1' }}>
+                The character ID must match an existing row in Characters.
+                {tab === 'Stories' && ' Enter connected story IDs separated by commas; story bodies support Markdown.'}
+              </p>
             )}
             <button disabled={busy || loading} style={{ marginTop: '14px' }} type="submit">
               {busy ? 'Saving…' : `Add ${tab} row`}

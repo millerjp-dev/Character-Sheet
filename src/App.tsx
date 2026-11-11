@@ -8,6 +8,9 @@ import { RuneSkill } from './components/stat/RuneSkill';
 import { BlackHoleLink } from './components/black-hole/BlackHoleLink';
 import { DebugPage } from './components/debug/DebugPage';
 import { SheetEditorPage } from './components/sheet-editor/SheetEditorPage';
+import { CreateCharacterPage } from './components/character/CreateCharacterPage';
+import { CreateStoryPage } from './components/story-shelf/CreateStoryPage';
+import { StoryShelf } from './components/story-shelf/StoryShelf';
 import { CharacterProvider } from './context/CharacterProvider';
 import { BACKGROUND_THEMES, DEFAULT_CHARACTER } from './context/CharacterContext';
 import type { BackgroundTheme, Character } from './context/CharacterContext';
@@ -23,7 +26,11 @@ function App() {
         ? 'debug'
         : currentPath === '/sheet-editor'
           ? 'sheet-editor'
-          : 'sheet';
+          : currentPath === '/create-story'
+            ? 'create-story'
+            : currentPath === '/create-character'
+              ? 'create-character'
+              : 'sheet';
   const [characters, setCharacters] = useState<Character[] | null>(null);
   const [selectedId, setSelectedId] = useState(
     () => new URLSearchParams(window.location.search).get('characterId') ?? '',
@@ -33,7 +40,7 @@ function App() {
   const selectedCharacter = characters?.find((character) => character.id === selectedId)
     ?? characters?.[0];
   const backgroundTheme =
-    currentPage === 'sheet'
+    currentPage === 'sheet' || currentPage === 'create-story'
       ? selectedCharacter?.backgroundTheme ?? DEFAULT_CHARACTER.backgroundTheme
       : readBackgroundThemeFromUrl() ?? DEFAULT_CHARACTER.backgroundTheme;
 
@@ -42,7 +49,7 @@ function App() {
   }, [backgroundTheme]);
 
   useEffect(() => {
-    if (currentPage !== 'sheet') {
+    if (currentPage !== 'sheet' && currentPage !== 'create-story') {
       return;
     }
 
@@ -50,7 +57,7 @@ function App() {
 
     setCharacters(null);
     setError(null);
-    fetchCharacters(controller.signal)
+    fetchCharacters(controller.signal, { includeStories: currentPage !== 'create-story' })
       .then((loadedCharacters) => {
         setCharacters(loadedCharacters);
         const requestedId = new URLSearchParams(window.location.search).get('characterId');
@@ -97,6 +104,57 @@ function App() {
       <>
         <PageNavigation />
         <SheetEditorPage />
+      </>
+    );
+  }
+
+  if (currentPage === 'create-character') {
+    return (
+      <>
+        <PageNavigation currentPage="create-character" />
+        <CreateCharacterPage />
+      </>
+    );
+  }
+
+  if (currentPage === 'create-story') {
+    if (error) {
+      return (
+        <>
+          <PageNavigation currentPage="create-story" />
+          <main role="alert" style={{ margin: '48px auto', maxWidth: '720px', padding: '0 24px', color: '#f5e7c7', textAlign: 'center' }}>
+            <p>Could not load characters: {error}</p>
+            <button onClick={() => setRetry((attempt) => attempt + 1)} type="button">
+              Try again
+            </button>
+          </main>
+        </>
+      );
+    }
+    if (!characters || !selectedCharacter) {
+      return (
+        <>
+          <PageNavigation currentPage="create-story" />
+          <main aria-live="polite" style={{ margin: '48px auto', color: '#f5e7c7', textAlign: 'center' }}>
+            Loading characters…
+          </main>
+        </>
+      );
+    }
+    return (
+      <>
+        <PageNavigation currentPage="create-story" />
+        <CreateStoryPage
+          character={selectedCharacter}
+          characters={characters}
+          onCharacterChange={(id) => {
+            const character = characters.find((item) => item.id === id);
+            if (character) {
+              setSelectedId(id);
+              updateCharacterQuery(character);
+            }
+          }}
+        />
       </>
     );
   }
@@ -170,7 +228,11 @@ function createCharacterHref(path: string, character: Character): string {
   return `${url.pathname}${url.search}`;
 }
 
-function PageNavigation({ currentPage }: { currentPage?: 'sheet' | 'cards' }) {
+function PageNavigation({
+  currentPage,
+}: {
+  currentPage?: 'sheet' | 'cards' | 'create-story' | 'create-character';
+}) {
   const linkStyle = {
     borderRadius: '6px',
     color: '#f5e7c7',
@@ -203,6 +265,26 @@ function PageNavigation({ currentPage }: { currentPage?: 'sheet' | 'cards' }) {
         }}
       >
         Cards
+      </a>
+      <a
+        aria-current={currentPage === 'create-story' ? 'page' : undefined}
+        href={createPageHref('/create-story')}
+        style={{
+          ...linkStyle,
+          background: currentPage === 'create-story' ? 'rgba(245, 231, 199, 0.16)' : 'transparent',
+        }}
+      >
+        Create Story
+      </a>
+      <a
+        aria-current={currentPage === 'create-character' ? 'page' : undefined}
+        href={createPageHref('/create-character')}
+        style={{
+          ...linkStyle,
+          background: currentPage === 'create-character' ? 'rgba(245, 231, 199, 0.16)' : 'transparent',
+        }}
+      >
+        Create Character
       </a>
     </nav>
   );
@@ -302,6 +384,7 @@ function CharacterSheet({
         ))}
       </div>
     </section>
+    <StoryShelf character={character} characters={characters} />
     <div style={{'margin': '100px',
       'alignItems': 'center', 'justifyContent' : "space-between", 'width' : '500px', 'maxWidth': 'calc(100vw - 48px)', 'display': 'flex', 'position': 'relative'}}>
       <Tooltip position='bottom' content='Test2'>

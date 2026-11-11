@@ -1,0 +1,123 @@
+.story-text-editor {
+  background: #171512;
+  border: 1px solid rgba(245, 231, 199, 0.3);
+  border-radius: 6px;
+  color: #f5e7c7;
+  overflow: hidden;
+}
+
+.story-text-editor-toolbar {
+  align-items: center;
+  border-bottom: 1px solid rgba(245, 231, 199, 0.2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+}
+
+.story-text-editor-tool {
+  background: rgba(245, 231, 199, 0.08);
+  border: 1px solid rgba(245, 231, 199, 0.2);
+  border-radius: 5px;
+  color: #f5e7c7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  min-height: 34px;
+  padding: 5px 9px;
+}
+
+.story-text-editor-tool:hover:not(:disabled),
+.story-text-editor-tool[aria-pressed='true'] {
+  background: rgba(215, 184, 123, 0.24);
+  border-color: #d7b87b;
+}
+
+.story-text-editor-tool:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.story-footnote-dialog {
+  background: #181511;
+  border: 1px solid rgba(245, 231, 199, 0.3);
+  border-radius: 10px;
+  box-sizing: border-box;
+  color: #f5e7c7;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: 20px;
+  width: 100%;
+}
+
+.story-footnote-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.story-footnote-dialog h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  margin-top: 0;
+}
+
+.story-footnote-dialog label {
+  display: grid;
+  gap: 6px;
+}
+
+.story-footnote-dialog textarea {
+  background: #171512;
+  border: 1px solid rgba(245, 231, 199, 0.3);
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: #f5e7c7;
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.story-footnote-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.story-text-editor-content {
+  line-height: 1.65;
+  min-height: 320px;
+  outline: none;
+  overflow-wrap: anywhere;
+  padding: 12px;
+}
+
+.story-text-editor-content > :first-child {
+  margin-top: 0;
+}
+
+.story-text-editor-content > :last-child {
+  margin-bottom: 0;
+}
+
+.story-text-editor-content h1,
+.story-text-editor-content h2,
+.story-text-editor-content h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.3;
+}
+
+.story-text-editor-content blockquote {
+  border-left: 3px solid #d7b87b;
+  color: #d8cbb1;
+  margin-left: 0;
+  padding-left: 14px;
+}
+
+.story-text-editor-content ul,
+.story-text-editor-content ol {
+  padding-left: 24px;
+}
+
+.story-text-editor-content:focus-visible {
+  box-shadow: inset 0 0 0 2px #d7b87b;
+}

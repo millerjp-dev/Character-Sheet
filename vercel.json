@@ -2,6 +2,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/sheets/:path*",
+      "destination": "/api/sheet-handler?path=:path*"
+    },
+    {
       "source": "/cards",
       "destination": "/index.html"
     },
@@ -11,6 +15,14 @@
     },
     {
       "source": "/sheet-editor",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/create-story",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/create-character",
       "destination": "/index.html"
     }
   ]

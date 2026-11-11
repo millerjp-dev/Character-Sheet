@@ -1,4 +1,4 @@
-export const SHEET_TABS = ['Characters', 'Stats', 'Skills'] as const;
+export const SHEET_TABS = ['Characters', 'Stats', 'Skills', 'Stories'] as const;
 
 export type SheetTab = (typeof SHEET_TABS)[number];
 

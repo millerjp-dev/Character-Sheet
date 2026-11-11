@@ -16,6 +16,13 @@ export interface CharacterSkill {
   bonus: number;
 }
 
+export interface CharacterStory {
+  id: string;
+  title: string;
+  body: string;
+  connectedStories: string[];
+}
+
 export const BACKGROUND_THEMES = [
   'deep-space',
   'arcane-forest',
@@ -33,6 +40,7 @@ export interface Character {
   palette: CharacterPalette;
   stats: CharacterStat[];
   skills: CharacterSkill[];
+  stories: CharacterStory[];
 }
 
 export const DEFAULT_CHARACTER: Character = {
@@ -56,6 +64,7 @@ export const DEFAULT_CHARACTER: Character = {
     { name: 'Sleight of Hand', bonus: 5 },
     { name: 'Survival', bonus: 2 },
   ],
+  stories: [],
 };
 
 export interface CharacterContextValue {
